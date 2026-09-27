@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env y secretos
+.env
+.env.local
+*.env.local
+
+# Assets: no van al repo
+assets/
+backend/assets/
+
+# Datos locales de Postgres
+postgres_data_local/
+postgres_data/
+
+# Editores
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Archivos personales
+*.odt
+sentencias*
