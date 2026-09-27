@@ -46,9 +46,14 @@ export default function Modal({ data, token }: ModalProps) {
     <div className="fixed inset-0 z-50 bg-neutral-950 flex flex-col">
       <header className="p-4 text-center">
         {isOwner ? (
-          <p className="text-3xl font-bold text-orange-500 max-w-3xl mx-auto leading-tight">
-            {data.mensaje || saludoRandom}
-          </p>
+          <>
+            <h1 className="text-3xl font-bold text-orange-500 max-w-3xl mx-auto leading-tight">
+              Hola <span className="text-green-400">{data.nombre}</span>
+            </h1>
+            <p className="text-lg text-orange-500 max-w-2xl mx-auto mt-2">
+              {data.mensaje || saludoRandom}
+            </p>
+          </>
         ) : (
           <>
             <h1 className="text-xl font-semibold">
