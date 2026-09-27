@@ -1,0 +1,74 @@
+# docker-compose.prod.yml
+# Stack de produccion para Nibal.ink en la VPS.
+#
+# Uso:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Requiere:
+#   - red externa "nibalink_net" ya creada
+#   - archivo .env en este directorio con las variables de entorno
+#   - el proxy central (nibalink_proxy) apuntando a nibal_backend,
+#     nibal_frontend y nibal_assets por nombre de contenedor
+
+services:
+  nibal_db:
+    image: postgres:15-alpine
+    container_name: nibal_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - nibalink_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  nibal_backend:
+    image: nibal.ink_app-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nibal_backend
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@nibal_db:5432/${DB_NAME}
+    depends_on:
+      nibal_db:
+        condition: service_healthy
+    networks:
+      - nibalink_net
+
+  nibal_frontend:
+    image: nibal.ink_app-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ""
+    container_name: nibal_frontend
+    restart: always
+    networks:
+      - nibalink_net
+
+  nibal_assets:
+    image: nginx:1.25-alpine
+    container_name: nibal_assets
+    restart: always
+    volumes:
+      - ./assets:/var/www/assets:ro
+      - ./infra/nginx/assets_internal.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - nibalink_net
+
+networks:
+  nibalink_net:
+    external: true
+    name: nibalink_net
