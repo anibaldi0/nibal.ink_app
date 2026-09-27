@@ -362,7 +362,7 @@ export default function Visor3D({ modelo, decal }: Visor3DProps) {
           </mesh>
         </group>
 
-        <Environment preset="warehouse" />
+        <Environment files="/hdri/warehouse.hdr" />
       </Suspense>
 
       <OrbitControls
