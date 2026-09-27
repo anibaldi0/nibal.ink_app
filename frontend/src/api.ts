@@ -1,6 +1,6 @@
 import type { ShareResponse, TazaData } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export async function fetchTaza(token: string): Promise<TazaData> {
   const res = await fetch(`${API_BASE}/api/taza/${token}`);
