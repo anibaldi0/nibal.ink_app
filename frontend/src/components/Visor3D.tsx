@@ -19,12 +19,8 @@ const MARGIN = 0.02;
 const GAP_COLOR = "#ffffff";
 
 const MODEL_OFFSET_X = 0.0;
-const MODEL_OFFSET_Y = -0.1;
+const MODEL_OFFSET_Y = 0.0;
 const MODEL_OFFSET_Z = -0.1;
-
-const PEDESTAL_OFFSET_X = 0.0;
-const PEDESTAL_OFFSET_Y = -0.52;
-const PEDESTAL_OFFSET_Z = 0.0;
 
 const ORBIT_TARGET_X = 0.0;
 const ORBIT_TARGET_Y = 0.0;
@@ -33,10 +29,7 @@ const ORBIT_TARGET_Z = 0.0;
 // ========================================================================
 // ESCALA RESPONSIVE
 // ------------------------------------------------------------------------
-// Ajusta la escala de todo el conjunto (taza + pedestal) segun el ancho
-// de la pantalla. La idea es mobile-first: en celular la taza se ve mas
-// chica para que entre comoda en pantallas angostas, y en desktop se
-// aprovecha el espacio.
+// Ajusta la escala del modelo segun el ancho de la pantalla.
 //
 // Breakpoints (px):
 //   < 640          -> 0.5   (mobile)
@@ -342,24 +335,8 @@ export default function Visor3D({ modelo, decal }: Visor3DProps) {
       <directionalLight position={[-5, 3, -5]} intensity={0.4} />
 
       <Suspense fallback={null}>
-        {/* El grupo entero (taza + pedestal) escala segun pantalla. */}
         <group scale={responsiveScale}>
           <TazaMesh modelo={modelo} decal={decal} />
-
-          <mesh
-            position={[
-              PEDESTAL_OFFSET_X,
-              PEDESTAL_OFFSET_Y,
-              PEDESTAL_OFFSET_Z,
-            ]}
-          >
-            <cylinderGeometry args={[0.6, 0.65, 0.04, 64]} />
-            <meshStandardMaterial
-              color="#1a1a1a"
-              roughness={0.7}
-              metalness={0.3}
-            />
-          </mesh>
         </group>
 
         <Environment files="/hdri/warehouse.hdr" />
