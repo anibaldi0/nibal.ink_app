@@ -18,6 +18,22 @@ const MARGIN = 0.02;
 
 const GAP_COLOR = "#ffffff";
 
+// ========================================================================
+// MARGEN VERTICAL
+// ------------------------------------------------------------------------
+// Fraccion de la altura total del cuerpo que queda sin imagen, tanto
+// arriba como abajo. Se usa para dejar un margen blanco entre el diseno
+// y el borde superior/inferior de la taza.
+//
+// Ejemplo: taza de 9 cm de altura, 0.5 cm de margen arriba y abajo:
+//   VERTICAL_MARGIN_FRACTION = 0.5 / 9 = 0.0556
+//
+// Si queres mas margen, subis el valor. Si queres menos, lo bajas.
+// 0.0 = la imagen cubre toda la altura (sin margen).
+// ========================================================================
+const VERTICAL_MARGIN_FRACTION = 0.5 / 9;
+// ========================================================================
+
 const MODEL_OFFSET_X = 0.0;
 const MODEL_OFFSET_Y = 0.0;
 const MODEL_OFFSET_Z = -0.1;
@@ -26,20 +42,9 @@ const ORBIT_TARGET_X = 0.0;
 const ORBIT_TARGET_Y = 0.0;
 const ORBIT_TARGET_Z = 0.0;
 
-// ========================================================================
-// ESCALA RESPONSIVE
-// ------------------------------------------------------------------------
-// Ajusta la escala del modelo segun el ancho de la pantalla.
-//
-// Breakpoints (px):
-//   < 640          -> 0.5   (mobile)
-//   640 a 1023     -> 0.75  (tablet)
-//   >= 1024        -> 1.0   (desktop)
-// ========================================================================
 const SCALE_MOBILE = 0.5;
 const SCALE_TABLET = 0.75;
 const SCALE_DESKTOP = 1.0;
-// ========================================================================
 
 function useResponsiveScale(): number {
   const [scale, setScale] = useState<number>(() => {
@@ -88,10 +93,36 @@ function computeTheta(x: number, z: number, offsetTurns: number): number {
   return theta;
 }
 
+/**
+ * Calcula si un vertice cae dentro de la zona util (imagen).
+ * Zona util = dentro del angulo de la imagen Y dentro del rango vertical.
+ */
+function isInsideImageZone(
+  x: number,
+  y: number,
+  z: number,
+  centerX: number,
+  centerZ: number,
+  minY: number,
+  usableHeight: number,
+  verticalMargin: number,
+  halfImageAngle: number,
+  offsetTurns: number,
+): boolean {
+  const theta = computeTheta(x - centerX, z - centerZ, offsetTurns);
+  if (theta < -halfImageAngle || theta > halfImageAngle) return false;
+
+  const yRel = (y - minY) / usableHeight;
+  if (yRel < verticalMargin || yRel > 1 - verticalMargin) return false;
+
+  return true;
+}
+
 function computeCylindricalUVs(
   geometry: THREE.BufferGeometry,
   ratio: number,
   offsetTurns: number,
+  verticalMargin: number,
 ): void {
   const pos = geometry.attributes.position as THREE.BufferAttribute;
   geometry.computeBoundingBox();
@@ -124,7 +155,13 @@ function computeCylindricalUVs(
 
     if (MIRROR_U) u = 1 - u;
 
-    let v = (y - minY) / height;
+    // V con margen vertical: la imagen ocupa [verticalMargin, 1 - verticalMargin]
+    // de la altura, y lo que queda afuera se clampea a los extremos.
+    let vRel = (y - minY) / height;
+    vRel = (vRel - verticalMargin) / (1 - 2 * verticalMargin);
+    vRel = Math.max(0, Math.min(1, vRel));
+
+    let v = vRel;
     if (FLIP_V) v = 1 - v;
 
     uvs[i * 2] = u;
@@ -138,6 +175,7 @@ function splitByImageZone(
   geometry: THREE.BufferGeometry,
   ratio: number,
   offsetTurns: number,
+  verticalMargin: number,
   centerX: number,
   centerZ: number,
 ): { imageGeo: THREE.BufferGeometry; gapGeo: THREE.BufferGeometry } {
@@ -151,6 +189,11 @@ function splitByImageZone(
     | THREE.BufferAttribute
     | undefined;
 
+  nonIndexed.computeBoundingBox();
+  const bbox = nonIndexed.boundingBox!;
+  const minY = bbox.min.y;
+  const usableHeight = bbox.max.y - bbox.min.y || 1;
+
   const triCount = Math.floor(pos.count / 3);
   const halfImageAngle = ratio * Math.PI;
 
@@ -163,14 +206,27 @@ function splitByImageZone(
 
     for (let k = 0; k < 3; k++) {
       const i = t * 3 + k;
-      const x = pos.getX(i) - centerX;
-      const z = pos.getZ(i) - centerZ;
-      const theta = computeTheta(x, z, offsetTurns);
-      thetas.push(theta);
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
 
-      if (theta < -halfImageAngle || theta > halfImageAngle) {
-        allInside = false;
-      }
+      const inside = isInsideImageZone(
+        x,
+        y,
+        z,
+        centerX,
+        centerZ,
+        minY,
+        usableHeight,
+        verticalMargin,
+        halfImageAngle,
+        offsetTurns,
+      );
+
+      if (!inside) allInside = false;
+
+      const theta = computeTheta(x - centerX, z - centerZ, offsetTurns);
+      thetas.push(theta);
     }
 
     const minT = Math.min(...thetas);
@@ -265,12 +321,13 @@ function TazaMesh({ modelo, decal }: TazaMeshProps) {
     const ratio = Math.max(0.1, Math.min(1, decal.scale[0] || 1));
     const offsetTurns = decal.offset[0] || 0;
 
-    computeCylindricalUVs(geo, ratio, offsetTurns);
+    computeCylindricalUVs(geo, ratio, offsetTurns, VERTICAL_MARGIN_FRACTION);
 
     const { imageGeo, gapGeo } = splitByImageZone(
       geo,
       ratio,
       offsetTurns,
+      VERTICAL_MARGIN_FRACTION,
       0,
       0,
     );
