@@ -2,15 +2,17 @@
 # crear-taza.sh - Crea o actualiza una taza en Nibal.ink
 #
 # Uso:
-#   ./crear-taza.sh <slug> "<Nombre Display>" [<ruta-imagen>] [--mensaje "..."]
+#   ./crear-taza.sh <slug> "<Nombre>" --mensaje "<Mensaje>" [<ruta-imagen>]
+#
+# El flag --mensaje es OBLIGATORIO. Ponelo vacio ("") si no lleva mensaje.
+# El nombre tambien puede ir vacio ("") si no lleva.
 #
 # Ejemplos:
-#   ./crear-taza.sh juan-2026-04-28 "Juan Perez"
-#   ./crear-taza.sh juan-2026-04-28 ""                     # sin nombre
-#   ./crear-taza.sh juan-2026-04-28 "Juan" --mensaje "Feliz cumple"
-#   ./crear-taza.sh maria-cumple "" --mensaje "Para vos"
-#
-# Si no pasas la ruta de imagen, busca en tazas/input/<slug>.<ext>
+#   ./crear-taza.sh juan-2026-04-28 "Juan Perez" --mensaje ""
+#   ./crear-taza.sh juan-2026-04-28 "" --mensaje ""
+#   ./crear-taza.sh juan-2026-04-28 "" --mensaje "Feliz cumple"
+#   ./crear-taza.sh juan-2026-04-28 "Juan" --mensaje "Para vos"
+#   ./crear-taza.sh juan-2026-04-28 "Juan" --mensaje "Para vos" ~/ruta/imagen.webp
 
 set -euo pipefail
 
@@ -37,19 +39,23 @@ log()  { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[x]${NC} $1" >&2; }
 
-# --- parseo de argumentos ---
-if [ $# -lt 2 ]; then
+# --- validacion de argumentos ---
+if [ $# -lt 4 ]; then
   cat <<USAGE
-Uso: $0 <slug> "<Nombre Display>" [<ruta-imagen>] [--mensaje "..."]
-     $0 <slug> "" [<ruta-imagen>] [--mensaje "..."]
+[x] Faltan argumentos.
 
-Si el nombre es "", no se muestra el "Hola" en el modal.
-Si el mensaje es "", se usa un saludo random.
+Uso:
+  $0 <slug> "<Nombre>" --mensaje "<Mensaje>" [<ruta-imagen>]
+
+El flag --mensaje es OBLIGATORIO. Ponelo vacio ("") si no lleva mensaje.
+El nombre tambien puede ir vacio ("") si no lleva.
 
 Ejemplos:
-  $0 juan-2026-04-28 "Juan Perez"
-  $0 juan-2026-04-28 ""
+  $0 juan-2026-04-28 "Juan Perez" --mensaje ""
+  $0 juan-2026-04-28 "" --mensaje ""
   $0 juan-2026-04-28 "" --mensaje "Feliz cumple"
+  $0 juan-2026-04-28 "Juan" --mensaje "Para vos"
+  $0 juan-2026-04-28 "Juan" --mensaje "Para vos" ~/ruta/imagen.webp
 USAGE
   exit 1
 fi
@@ -58,26 +64,25 @@ SLUG="$1"
 NOMBRE="$2"
 shift 2
 
-IMG_PATH=""
-MENSAJE=""
+if [ "$1" != "--mensaje" ]; then
+  err "Falta el flag --mensaje. Debe venir despues del nombre."
+  err "Uso: $0 <slug> \"<Nombre>\" --mensaje \"<Mensaje>\" [<ruta-imagen>]"
+  err "Ejemplo: $0 $SLUG \"$NOMBRE\" --mensaje \"\""
+  exit 1
+fi
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --mensaje)
-      MENSAJE="$2"
-      shift 2
-      ;;
-    *)
-      if [ -z "$IMG_PATH" ]; then
-        IMG_PATH="$1"
-        shift
-      else
-        err "Argumento no reconocido: $1"
-        exit 1
-      fi
-      ;;
-  esac
-done
+MENSAJE="$2"
+shift 2
+
+IMG_PATH=""
+if [ $# -gt 0 ]; then
+  IMG_PATH="$1"
+  shift
+  if [ $# -gt 0 ]; then
+    err "Argumentos sobrantes: $*"
+    exit 1
+  fi
+fi
 
 if ! [[ "$SLUG" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
   err "El slug debe estar en minusculas, sin espacios, solo [a-z0-9._-]"
@@ -244,7 +249,6 @@ URL=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['u
 QR_B64=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['qr_png_base64'])")
 TAZA_ID=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['taza_id'])")
 
-# respaldar el info.txt viejo si existe
 if [ -f "$OUTPUT_DIR/$SLUG/info.txt" ]; then
   cp "$OUTPUT_DIR/$SLUG/info.txt" "$OUTPUT_DIR/$SLUG/info.txt.bak-$(date +%s)"
 fi
