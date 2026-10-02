@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# crear-taza.sh - Crea una taza nueva en Nibal.ink
+# crear-taza.sh - Crea o actualiza una taza en Nibal.ink
 #
 # Uso:
-#   ./crear-taza.sh <slug> "<Nombre Display>" [<ruta-imagen>]
+#   ./crear-taza.sh <slug> "<Nombre Display>" [<ruta-imagen>] [--mensaje "..."]
 #
 # Ejemplos:
 #   ./crear-taza.sh juan-2026-04-28 "Juan Perez"
-#   ./crear-taza.sh maria-cumple "Maria Lopez" ~/Downloads/taza-maria.png
+#   ./crear-taza.sh juan-2026-04-28 ""                     # sin nombre
+#   ./crear-taza.sh juan-2026-04-28 "Juan" --mensaje "Feliz cumple"
+#   ./crear-taza.sh maria-cumple "" --mensaje "Para vos"
 #
-# Si no pasas la ruta, busca en tazas/input/<slug>.<ext>
+# Si no pasas la ruta de imagen, busca en tazas/input/<slug>.<ext>
 
 set -euo pipefail
 
@@ -35,14 +37,47 @@ log()  { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[x]${NC} $1" >&2; }
 
+# --- parseo de argumentos ---
 if [ $# -lt 2 ]; then
-  echo "Uso: $0 <slug> \"<Nombre Display>\" [<ruta-imagen>]"
+  cat <<USAGE
+Uso: $0 <slug> "<Nombre Display>" [<ruta-imagen>] [--mensaje "..."]
+     $0 <slug> "" [<ruta-imagen>] [--mensaje "..."]
+
+Si el nombre es "", no se muestra el "Hola" en el modal.
+Si el mensaje es "", se usa un saludo random.
+
+Ejemplos:
+  $0 juan-2026-04-28 "Juan Perez"
+  $0 juan-2026-04-28 ""
+  $0 juan-2026-04-28 "" --mensaje "Feliz cumple"
+USAGE
   exit 1
 fi
 
 SLUG="$1"
 NOMBRE="$2"
-IMG_PATH="${3:-}"
+shift 2
+
+IMG_PATH=""
+MENSAJE=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mensaje)
+      MENSAJE="$2"
+      shift 2
+      ;;
+    *)
+      if [ -z "$IMG_PATH" ]; then
+        IMG_PATH="$1"
+        shift
+      else
+        err "Argumento no reconocido: $1"
+        exit 1
+      fi
+      ;;
+  esac
+done
 
 if ! [[ "$SLUG" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
   err "El slug debe estar en minusculas, sin espacios, solo [a-z0-9._-]"
@@ -66,9 +101,11 @@ fi
 IMG_EXT_LOWER=$(echo "${IMG_PATH##*.}" | tr '[:upper:]' '[:lower:]')
 
 log "Slug:    $SLUG"
-log "Nombre:  $NOMBRE"
+log "Nombre:  ${NOMBRE:-(sin nombre)}"
+log "Mensaje: ${MENSAJE:-(random)}"
 log "Imagen:  $IMG_PATH"
 
+# --- detectar local o prod ---
 API_URL="${NIBAL_API_URL:-}"
 if [ -z "$API_URL" ]; then
   if curl -s -o /dev/null --max-time 2 http://localhost:8001/api/health; then
@@ -89,20 +126,69 @@ fi
 log "Modo:    $MODE"
 log "API:     $API_URL"
 
+# --- cargar ADMIN_TOKEN ---
+if [ -z "${ADMIN_TOKEN:-}" ]; then
+  if [ -f "$PROYECTO_DIR/.env.prod" ]; then
+    ADMIN_TOKEN=$(grep '^ADMIN_TOKEN' "$PROYECTO_DIR/.env.prod" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    [ -n "$ADMIN_TOKEN" ] && log "Token:   cargado desde .env.prod"
+  fi
+fi
+
 if [ -z "${ADMIN_TOKEN:-}" ]; then
   if [ -f "$PROYECTO_DIR/backend/.env" ]; then
     ADMIN_TOKEN=$(grep '^ADMIN_TOKEN' "$PROYECTO_DIR/backend/.env" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
-  fi
-  if [ -z "${ADMIN_TOKEN:-}" ] && [ -f "$PROYECTO_DIR/.env" ]; then
-    ADMIN_TOKEN=$(grep '^ADMIN_TOKEN' "$PROYECTO_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    [ -n "$ADMIN_TOKEN" ] && warn "Token:   cargado desde backend/.env (modo dev)"
   fi
 fi
 
 if [ -z "${ADMIN_TOKEN:-}" ]; then
-  err "No encuentro ADMIN_TOKEN. Exportalo o ponelo en backend/.env"
+  err "No encuentro ADMIN_TOKEN. Crealo en .env.prod o exportalo."
   exit 1
 fi
 
+# --- chequeo de existencia (local, VPS, DB) ---
+LOCAL_EXISTS="no"
+VPS_EXISTS="no"
+DB_EXISTS="no"
+
+if [ -d "$LOCAL_ASSETS_DIR/$SLUG" ]; then
+  LOCAL_EXISTS="si"
+fi
+
+if [ "$MODE" = "prod" ]; then
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 "$VPS_USER@$VPS_HOST" \
+       "test -d $VPS_ASSETS/$SLUG" 2>/dev/null; then
+    VPS_EXISTS="si"
+  fi
+fi
+
+RESP_SLUG=$(curl -s -o /dev/null -w "%{http_code}" \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  "$API_URL/api/admin/taza-por-slug/$SLUG" || echo "000")
+if [ "$RESP_SLUG" = "200" ]; then
+  DB_EXISTS="si"
+fi
+
+if [ "$LOCAL_EXISTS" = "si" ] || [ "$VPS_EXISTS" = "si" ] || [ "$DB_EXISTS" = "si" ]; then
+  warn "El slug '$SLUG' ya existe:"
+  echo "    - Archivos locales: $LOCAL_EXISTS"
+  echo "    - Archivos en la VPS: $VPS_EXISTS"
+  echo "    - En la DB: $DB_EXISTS"
+  echo ""
+  echo "    Si continuas:"
+  echo "      1. Se sobreescriben los archivos locales"
+  echo "      2. Se sobreescriben los archivos en la VPS"
+  echo "      3. Se ACTUALIZA la fila de la DB (mantiene el token original)"
+  echo "         => el QR viejo sigue funcionando, muestra el diseno nuevo"
+  echo ""
+  read -p "    Sobreescribir? (s/N): " RESPUESTA
+  case "$RESPUESTA" in
+    s|S|si|SI|Si|sI) log "Continuando con sobreescritura..." ;;
+    *) log "Cancelado por el usuario."; exit 0 ;;
+  esac
+fi
+
+# --- copiar y subir assets ---
 mkdir -p "$LOCAL_ASSETS_DIR/$SLUG" "$OUTPUT_DIR/$SLUG"
 
 DISENO_NAME="diseno.$IMG_EXT_LOWER"
@@ -120,11 +206,13 @@ fi
 TEXTURE_KEY="tazas/$SLUG/$DISENO_NAME"
 THUMB_KEY="tazas/$SLUG/thumb.$IMG_EXT_LOWER"
 
-log "Creando taza en el backend..."
+log "Creando/actualizando taza en el backend..."
 
 BODY=$(cat <<JSON
 {
+  "slug": "$SLUG",
   "nombre": "$NOMBRE",
+  "mensaje": "$MENSAJE",
   "glb_key": "$GLB_KEY",
   "texture_key": "$TEXTURE_KEY",
   "thumb_key": "$THUMB_KEY",
@@ -145,10 +233,21 @@ if ! echo "$RESP" | python3 -c "import sys, json; json.load(sys.stdin)" 2>/dev/n
   exit 1
 fi
 
+if ! echo "$RESP" | python3 -c "import sys, json; sys.exit(0 if 'token_publico' in json.load(sys.stdin) else 1)" 2>/dev/null; then
+  err "El backend no devolvio token_publico:"
+  echo "$RESP"
+  exit 1
+fi
+
 TOKEN=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['token_publico'])")
 URL=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['url_publica'])")
 QR_B64=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['qr_png_base64'])")
 TAZA_ID=$(echo "$RESP" | python3 -c "import sys, json; print(json.load(sys.stdin)['taza_id'])")
+
+# respaldar el info.txt viejo si existe
+if [ -f "$OUTPUT_DIR/$SLUG/info.txt" ]; then
+  cp "$OUTPUT_DIR/$SLUG/info.txt" "$OUTPUT_DIR/$SLUG/info.txt.bak-$(date +%s)"
+fi
 
 echo "$QR_B64" | sed 's/^data:image\/png;base64,//' | base64 -d > "$OUTPUT_DIR/$SLUG/qr.png"
 cp "$IMG_PATH" "$OUTPUT_DIR/$SLUG/original.$IMG_EXT_LOWER"
@@ -157,7 +256,8 @@ IMG_SHA=$(sha256sum "$IMG_PATH" | cut -d' ' -f1)
 FECHA=$(date +"%Y-%m-%d %H:%M:%S")
 
 cat > "$OUTPUT_DIR/$SLUG/info.txt" <<INFO
-NOMBRE:      $NOMBRE
+NOMBRE:      ${NOMBRE:-(sin nombre)}
+MENSAJE:     ${MENSAJE:-(random)}
 SLUG:        $SLUG
 TAZA_ID:     $TAZA_ID
 TOKEN:       $TOKEN
@@ -174,8 +274,10 @@ fi
 
 echo ""
 log "=========================================="
-log "Taza creada: $NOMBRE"
+log "Taza creada/actualizada: $SLUG"
 log "=========================================="
+echo "  Nombre:  ${NOMBRE:-(sin nombre)}"
+echo "  Mensaje: ${MENSAJE:-(random)}"
 echo "  Token:   $TOKEN"
 echo "  URL:     $URL"
 echo "  Output:  $OUTPUT_DIR/$SLUG/"

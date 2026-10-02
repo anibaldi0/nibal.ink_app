@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class TazaCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    nombre: str = Field(min_length=1, max_length=200)
+    slug: str | None = Field(default=None, max_length=200)
+    nombre: str | None = Field(default=None, max_length=200)
     mensaje: str | None = Field(default=None, max_length=500)
     glb_key: str = Field(min_length=1, max_length=500)
     texture_key: str = Field(min_length=1, max_length=500)
@@ -46,7 +47,7 @@ class DecalInfo(BaseModel):
 
 
 class TazaPublicResponse(BaseModel):
-    nombre: str
+    nombre: str | None
     mensaje: str | None
     modelo: ModeloInfo
     decal: DecalInfo
@@ -58,6 +59,14 @@ class ShareCreateResponse(BaseModel):
     share_url: str
     share_token: str
     expira_en: datetime | None
+
+
+class TazaPorSlugResponse(BaseModel):
+    taza_id: UUID
+    slug: str | None
+    nombre: str | None
+    creada_en: datetime
+    revocada: bool
 
 
 class HealthResponse(BaseModel):

@@ -11,7 +11,7 @@ export interface DecalInfo {
 }
 
 export interface TazaData {
-  nombre: string;
+  nombre: string | null;
   mensaje: string | null;
   modelo: ModeloInfo;
   decal: DecalInfo;

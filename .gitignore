@@ -16,22 +16,27 @@ dist/
 # Env y secretos
 .env
 .env.local
+.env.prod
 *.env.local
 
 # Assets: no van al repo
 assets/
 backend/assets/
 
+# Carpeta de trabajo de tazas (input/output)
+tazas/
+
 # Datos locales de Postgres
 postgres_data_local/
 postgres_data/
+
+# Archivos personales
+*.odt
+sentencias*
+minecraft_bautista.png
 
 # Editores
 .vscode/
 .idea/
 *.swp
 .DS_Store
-
-# Archivos personales
-*.odt
-sentencias*

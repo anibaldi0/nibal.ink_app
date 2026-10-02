@@ -19,7 +19,9 @@ class Taza(Base):
         server_default=text("gen_random_uuid()"),
     )
     token_hash: Mapped[bytes] = mapped_column(nullable=False, unique=True)
-    nombre: Mapped[str] = mapped_column(nullable=False)
+    token: Mapped[str | None] = mapped_column(nullable=True)
+    slug: Mapped[str | None] = mapped_column(nullable=True, unique=True)
+    nombre: Mapped[str | None] = mapped_column(nullable=True)
     mensaje: Mapped[str | None] = mapped_column(nullable=True)
 
     glb_key: Mapped[str] = mapped_column(nullable=False)
